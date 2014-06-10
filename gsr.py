@@ -1,4 +1,16 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+""" GADGET Snapshot Reader  """
+
+__author__ = "Cristián Maureira and Patrick Brem"
+__copyright__ = "Copyright 2014, Cristián Maureira and Patrick Brem"
+__credits__ = ["Cristián Maureira", "Patrick Brem"]
+__license__ = "GPL"
+__version__ = "1.0"
+__maintainer__ = "Cristián Maureira"
+__email__ = "cmaurei@aei.mpg.de"
+__status__ = "Production"
 
 import os.path
 import struct

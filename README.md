@@ -3,6 +3,21 @@ gadget-snapshot-reader (GSR)
 
 Python module to read binary snapshots from Gadget.
 
+Install
+--------
+
+To use this module, it's necessary to source the `update_pythonpath.sh`
+
+```bash
+    source update_pythonpath.sh
+```
+
+Examples
+---------
+
+You can visit the `examples` directory to see a couple of ways to use
+GSR.
+
 Usage
 ------
 
