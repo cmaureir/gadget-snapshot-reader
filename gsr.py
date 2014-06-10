@@ -127,8 +127,9 @@ class Snapshot:
                 elif mass > 0:
                     self.m[i].fill(mass)
 
-        fmtstring = "{0:d}f4x".format(missing_masses)
-        everything = struct.unpack(fmtstring, instring)
+        if missing_masses > 0:
+            fmtstring = "{0:d}f4x".format(missing_masses)
+            everything = struct.unpack(fmtstring, instring)
 
 
         offset = 0
@@ -174,7 +175,7 @@ class Snapshot:
                      '% 1.5e', '% 1.5e', '% 1.5e',
                      '% 1.5e', '% 1.5e', '% 1.5e']
 
-        np.savetxt(fname+'.asc',
+        np.savetxt(self.fname+'.asc',
                    np.hstack([zip(ids, mass), pos, vel]),
                    fmt=fmtstring)
 
