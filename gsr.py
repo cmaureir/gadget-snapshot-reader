@@ -28,16 +28,39 @@ class Snapshot:
 
             # Process header
             self.SnapshotData['header'] = self.ProcessHeader()
+
             self.SnapshotData['pos'] = self.ProcessParticlesPos()
             self.SnapshotData['vel'] = self.ProcessParticlesVel()
             self.SnapshotData['ids'] = self.ProcessParticlesIds()
-            self.SnapshotData['mass'] = self.ProcessParticlesMass()
+            if self.check_empty_masses():
+                self.SnapshotData['mass'] = self.ProcessParticlesMass()
+            else:
+                self.SnapshotData['mass'] = self.m
+            self.SnapshotData['energy'] = self.ProcessParticlesEnergy()
+            self.SnapshotData['rho'] = self.ProcessParticlesRho()
         else:
             print(filename, ": No such file")
             sys.exit(1)
 
     def __exit__(self):
         self.binfile.close()
+
+    def check_empty_masses(self):
+        self.m = [np.zeros(i) for i in self.Npart]
+        self.missing_masses = 0
+        check = False
+
+        for i in range(6):
+            total = self.Npart[i]
+            mass = self.mpart[i]
+
+            if total > 0:
+                if mass == 0:
+                    self.missing_masses += total
+                    check = True
+                elif mass > 0:
+                    self.m[i].fill(mass)
+        return check
 
     def getRecordLength(self, instring):
         "Takes a string of some length and interprets it as a series of bits"
@@ -58,6 +81,7 @@ class Snapshot:
         self.mpart = np.array(everything[6:12])
         self.time = everything[12]
         self.Ntot = self.Npart.sum()
+        self.Ngas = self.Npart[0]
         return {'Npart': self.Npart,
                 'Mpart': self.mpart,
                 'Time': self.time,
@@ -126,39 +150,49 @@ class Snapshot:
         return self.unpackMasses(body)
 
     def unpackMasses(self, instring):
-        self.m = [np.zeros(i) for i in self.Npart]
-        missing_masses = 0
-
-        for i in range(6):
-            total = self.Npart[i]
-            mass = self.mpart[i]
-
-            if total > 0:
-                if mass == 0:
-                    missing_masses += total
-                elif mass > 0:
-                    self.m[i].fill(mass)
-
-        if missing_masses > 0:
-            fmtstring = "{0:d}f4x".format(missing_masses)
+        if self.missing_masses > 0:
+            fmtstring = "{0:d}f4x".format(self.missing_masses)
             everything = struct.unpack(fmtstring, instring)
-
-
-        offset = 0
-        for i in range(6):
-            if self.Npart[i] > 0 and self.mpart[i] == 0:
-                chunk = everything[offset:offset+self.Npart[i]]
-                self.m[i] = np.array(chunk)
-                offset += self.Npart[i]
-
+            offset = 0
+            for i in range(6):
+                if self.Npart[i] > 0 and self.mpart[i] == 0:
+                    chunk = everything[offset:offset+self.Npart[i]]
+                    self.m[i] = np.array(chunk)
+                    offset += self.Npart[i]
         return self.m
 
-    # TO DO
-    # Density processing
     # Energy processing
+    def ProcessParticlesEnergy(self):
+        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
+        body = self.binfile.read(nbytes)
+        return self.unpackEnergy(body)
+
+    def unpackEnergy(self, instring):
+        fmtstring = "{0:d}f4x".format(self.Ngas)
+        everything = struct.unpack(fmtstring, instring)
+
+        print everything[:10]
+        #chunk = everything[0:self.Ngas]
+        #self.Energy = np.array(chunk)
+        self.Energy = np.array(everything)
+        return self.Energy
+
+    # Rho processing
+    def ProcessParticlesRho(self):
+        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
+        body = self.binfile.read(nbytes)
+        return self.unpackRho(body)
+
+    def unpackRho(self, instring):
+        fmtstring = "{0:d}f4x".format(self.Ngas)
+        everything = struct.unpack(fmtstring, instring)
+
+        chunk = everything[0:self.Ngas]
+        self.Rho = np.array(chunk)
+        return self.Rho
+
 
     # Utils
-
     def computeCOM(self, parts=range(6)):
         '''
         Computes center of mass for all the particle types
