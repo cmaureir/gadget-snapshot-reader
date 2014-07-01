@@ -171,7 +171,6 @@ class Snapshot:
         fmtstring = "{0:d}f4x".format(self.Ngas)
         everything = struct.unpack(fmtstring, instring)
 
-        print everything[:10]
         #chunk = everything[0:self.Ngas]
         #self.Energy = np.array(chunk)
         self.Energy = np.array(everything)
