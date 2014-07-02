@@ -12,35 +12,62 @@ __maintainer__ = "Cristián Maureira"
 __email__ = "cmaurei@aei.mpg.de"
 __status__ = "Production"
 
-import os.path
-import struct
 import numpy as np
-import sys
+
+from os.path import isfile
+from struct import unpack
+from sys import exit, stderr
 
 class Snapshot:
     """Class in charge of the read-process of every snapshot"""
 
     def __init__(self, filename):
-        if os.path.isfile(filename):
+        if not isfile(filename):
+            stderr.write(filename, ": No such file")
+            exit(1)
+        else:
             self.fname = filename
-            self.binfile = open(self.fname, "rb")
-            self.SnapshotData = {}
+            try:
+                self.binfile = open(self.fname, "rb")
+            except IOError:
+                stderr.write(self.fname, ": Cannot open file")
+
+            # Information of the Snapshot
+            self.sdata = {}
 
             # Process header
-            self.SnapshotData['header'] = self.ProcessHeader()
+            self.sdata['header'] = self.ProcessHeader()
 
-            self.SnapshotData['pos'] = self.ProcessParticlesPos()
-            self.SnapshotData['vel'] = self.ProcessParticlesVel()
-            self.SnapshotData['ids'] = self.ProcessParticlesIds()
+            # Process positions float[N][3]
+            self.sdata['pos'] = self.ProcessParticlesPos()
+
+            # Process velocities float[N][3]
+            self.sdata['vel'] = self.ProcessParticlesVel()
+
+            # Process ID int[N]
+            self.sdata['id'] = self.ProcessParticlesId()
+
+            # Process Masses float[Nm]
+            # If the information is in the header, the snapshot
+            # will not contain any array with the masses, so that is
+            # why we need to skip the process
             if self.check_empty_masses():
-                self.SnapshotData['mass'] = self.ProcessParticlesMass()
+                self.sdata['mass'] = self.ProcessParticlesMass()
             else:
-                self.SnapshotData['mass'] = self.m
-            self.SnapshotData['energy'] = self.ProcessParticlesEnergy()
-            self.SnapshotData['rho'] = self.ProcessParticlesRho()
-        else:
-            print(filename, ": No such file")
-            sys.exit(1)
+                self.sdata['mass'] = self.m
+
+            # Process Internal Energy float[Ngas]
+            self.sdata['u'] = self.ProcessParticlesEnergy()
+
+            # Process density float[Ngas]
+            self.sdata['rho'] = self.ProcessParticlesRho()
+
+            # TO DO
+            # Process smoothing length float[Ngas]
+            # Process gravitational potential float[N]
+            # Process accelerations float[N][3]
+            # Process Rate of entropy production float[Ngas]
+            # Process timesteps of particles float[N]
 
     def __exit__(self):
         self.binfile.close()
@@ -64,7 +91,7 @@ class Snapshot:
 
     def getRecordLength(self, instring):
         "Takes a string of some length and interprets it as a series of bits"
-        return struct.unpack('i', instring)[0]
+        return unpack('i', instring)[0]
 
     # Header processing
     def ProcessHeader(self):
@@ -75,7 +102,7 @@ class Snapshot:
 
     def unpackHeader(self, instring):
         fmtstring = "6i8d9i{0:d}x".format(self.headerlength-124)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
         # list of 6 items giving number of each particle
         self.Npart = np.array(everything[:6])
         self.mpart = np.array(everything[6:12])
@@ -95,7 +122,7 @@ class Snapshot:
 
     def unpackPositions(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ntot*3)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
         self.pos = [np.zeros((i, 3)) for i in self.Npart]
 
         offset = 0
@@ -113,7 +140,7 @@ class Snapshot:
 
     def unpackVelocities(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ntot*3)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
 
         self.vel = [np.zeros((i, 3)) for i in self.Npart]
 
@@ -124,15 +151,15 @@ class Snapshot:
             offset += self.Npart[i]
         return self.vel
 
-    # Ids processing
-    def ProcessParticlesIds(self):
+    # Id processing
+    def ProcessParticlesId(self):
         nbytes = self.getRecordLength(self.binfile.read(4)) + 4
         body = self.binfile.read(nbytes)
-        return self.unpackIDs(body)
+        return self.unpackID(body)
 
-    def unpackIDs(self, instring):
+    def unpackID(self, instring):
         fmtstring = "{0:d}i4x".format(self.Ntot)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
 
         self.ID = [np.zeros(i, dtype=np.int) for i in self.Npart]
 
@@ -152,7 +179,7 @@ class Snapshot:
     def unpackMasses(self, instring):
         if self.missing_masses > 0:
             fmtstring = "{0:d}f4x".format(self.missing_masses)
-            everything = struct.unpack(fmtstring, instring)
+            everything = unpack(fmtstring, instring)
             offset = 0
             for i in range(6):
                 if self.Npart[i] > 0 and self.mpart[i] == 0:
@@ -169,10 +196,8 @@ class Snapshot:
 
     def unpackEnergy(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ngas)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
 
-        #chunk = everything[0:self.Ngas]
-        #self.Energy = np.array(chunk)
         self.Energy = np.array(everything)
         return self.Energy
 
@@ -184,7 +209,7 @@ class Snapshot:
 
     def unpackRho(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ngas)
-        everything = struct.unpack(fmtstring, instring)
+        everything = unpack(fmtstring, instring)
 
         chunk = everything[0:self.Ngas]
         self.Rho = np.array(chunk)
@@ -209,77 +234,103 @@ class Snapshot:
 
     def to_ascii(self):
         def get_tuple(key):
-            return tuple(i for i in self.SnapshotData[key])
+            if len(key) > 1:
+                return tuple(i for i in self.sdata[key])
 
-        ids = np.concatenate(get_tuple('ids'), axis = 0)
+        id = np.concatenate(get_tuple('id'), axis = 0)
         mass = np.concatenate(get_tuple('mass'), axis = 0)
         pos = np.concatenate(get_tuple('pos'), axis = 0)
         vel = np.concatenate(get_tuple('vel'), axis = 0)
+        u = self.sdata['u']
+        rho = self.sdata['rho']
+        u.resize(self.Ntot, refcheck=False)
+        rho.resize(self.Ntot, refcheck=False)
 
         fmtstring = ['%8d', '%1.5e',
                      '% 1.5e', '% 1.5e', '% 1.5e',
-                     '% 1.5e', '% 1.5e', '% 1.5e']
+                     '% 1.5e', '% 1.5e', '% 1.5e',
+                     '% 1.5e', '% 1.5e']
 
         np.savetxt(self.fname+'.asc',
-                   np.hstack([zip(ids, mass), pos, vel]),
+                   np.hstack([zip(id, mass), pos, vel, zip(u, rho)]),
                    fmt=fmtstring)
 
     def get_header(self):
-        return self.SnapshotData['header']
+        return self.sdata['header']
 
     def get_data_by_type(self, ptype):
+        d = {}
         if ptype < 0 or ptype > 5:
             print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
-            return None
-        return [self.SnapshotData['ids'][ptype],
-               self.SnapshotData['mass'][ptype],
-               self.SnapshotData['pos'][ptype],
-               self.SnapshotData['vel'][ptype]]
+            return d
+
+        d['id'] = self.sdata['id'][ptype],
+        d['mass'] = self.sdata['mass'][ptype],
+        d['pos'] = self.sdata['pos'][ptype],
+        d['vel'] = self.sdata['vel'][ptype]
+
+        # Return Internal Energy and Density if the requested type is Gas.
+        if ptype == 0:
+            d['u'] = self.sdata['u']
+            d['rho'] = self.sdata['rho']
+
+        return d
 
     def print_data_by_type(self, ptype):
         if ptype < 0 or ptype > 5:
             print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
             return None
         for i in range(self.Npart[ptype]):
-            pid = self.SnapshotData['ids'][ptype][i]
-            mass = self.SnapshotData['mass'][ptype][i]
-            posx, posy, posz = self.SnapshotData['pos'][ptype][i]
-            velx, vely, velz = self.SnapshotData['vel'][ptype][i]
+            pid = self.sdata['id'][ptype][i]
+            mass = self.sdata['mass'][ptype][i]
+            posx, posy, posz = self.sdata['pos'][ptype][i]
+            velx, vely, velz = self.sdata['vel'][ptype][i]
 
-            fmtstring = '%8d %1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e'
-            print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz))
+            if ptype == 0:
+                u = self.sdata['u'][i]
+                rho = self.sdata['rho'][i]
+                fmtstring = '%8d %1.5e '
+                fmtstring += '% 1.5e % 1.5e % 1.5e '
+                fmtstring += '% 1.5e % 1.5e % 1.5e '
+                fmtstring += '% 1.5e % 1.5e'
+                print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz,\
+                                   u, rho))
+
+            else:
+                fmtstring = '%8d %1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e'
+                print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz))
 
 ## Print utils
 #
 #def print_header(snap):
-#    for key, val in snap.SnapshotData['header'].iteritems():
+#    for key, val in snap.sdata['header'].iteritems():
 #        print(key, val)
 #
 #
 #def print_pos(snap):
 #    ptype = 0
-#    for p in snap.SnapshotData['pos']:
+#    for p in snap.sdata['pos']:
 #        print("Type", ptype, p)
 #        ptype += 1
 #
 #
 #def print_vel(snap):
 #    vtype = 0
-#    for v in snap.SnapshotData['vel']:
+#    for v in snap.sdata['vel']:
 #        print("Type", vtype, v)
 #        vtype += 1
 #
 #
-#def print_ids(snap):
+#def print_id(snap):
 #    itype = 0
-#    for i in snap.SnapshotData['ids']:
+#    for i in snap.sdata['id']:
 #        print("Type", itype, i)
 #        itype += 1
 #
 #
 #def print_mass(snap):
 #    mtype = 0
-#    for m in snap.SnapshotData['mass']:
+#    for m in snap.sdata['mass']:
 #        print("Type", mtype, m)
 #        mtype += 1
 
