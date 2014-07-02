@@ -33,7 +33,7 @@ snap.to_ascii()
 
 Every ascii file is generated using the following order:
 
-| id | mass | posx | posy | posz | velx | vely | velz |
+| id | mass | posx | posy | posz | velx | vely | velz | u | rho |
 
 If you want to print certain information from the snapshot
 by type:
@@ -51,9 +51,10 @@ particle_type = 5
 data = snap.get_data_by_type(particle_type)
 ```
 
-which will return a list with the following structure
-in the order *ids, masses, positions, velocities*:
+which will return a dictionary with the following structure:
 
 ```python
-[[id0, id1, ...],[mass0, mass1, ...], [[pos0x, pos0y, pos0z], [pos1x, pos1y, pos2z]], [[vel0x, vel0y, vel0z], [vel1x, vel1y, vel1z], ...]]
+{'id':[id0, id1, ...],'mass':[mass0, mass1, ...], 'pos':[[pos0x, pos0y, pos0z], [pos1x, pos1y, pos2z]], 'vel':[[vel0x, vel0y, vel0z], [vel1x, vel1y, vel1z], ...]]
 ```
+
+if the requested type is `0` (Gas) the dictionary will also include the Internal energy `u` and the Density `rho`.
