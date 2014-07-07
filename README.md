@@ -1,12 +1,20 @@
 gadget-snapshot-reader (GSR)
 ============================
 
-Python module to read binary snapshots from Gadget.
+[GADGET](http://www.mpa-garching.mpg.de/gadget/) is a cosmological SPH and N-body code, written by [Volker Springel](http://www.mpa-garching.mpg.de/~volker/).
 
-Install
---------
+Since this code is widely used by the cosmological community, and considering the growth of Python use among scientist,
+[Patrick Brem](https://github.com/skele/gadget-snapshot-reader) decided to write a simple script to read the snapshot and be able to access the data.
 
-To use this module, it's necessary to source the `update_pythonpath.sh`
+I decided to improve his code, and add more features, to provide a nice/simple module to deal with the GADGET binary snapshots.
+
+Be aware, the project is still **under development**.
+
+Installation
+--------------
+
+To use this module, it's necessary to source the `update_pythonpath.sh`,
+which will add to the `PYTHONPATH` the path of the code.
 
 ```bash
     source update_pythonpath.sh
@@ -43,7 +51,7 @@ particle_type = 5  # From GADGET, only 0, 1, 2, 3, 4, 5
 snap.print_data_by_type(particle_type)
 ```
 
-To use the data from the snapshot, it's possible to get
+To use the data from the snapshot, it is possible to get
 a list with all the information of a particle type:
 
 ```python
@@ -58,3 +66,11 @@ which will return a dictionary with the following structure:
 ```
 
 if the requested type is `0` (Gas) the dictionary will also include the Internal energy `u` and the Density `rho`.
+
+Feedback
+---------
+
+Since the project is still under development, a lot of feature are missing,
+and will be really nice if you can collaborate, asking for a new functionallity
+or even submitting a pull request to improve the code.
+
