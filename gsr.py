@@ -47,10 +47,10 @@ class Snapshot:
             # Process ID int[N]
             self.sdata['id'] = self.ProcessParticles(self.unpackID)
 
-            # Process Masses float[Nm]
-            # If the information is in the header, the snapshot
-            # will not contain any array with the masses, so that is
-            # why we need to skip the process
+            ## Process Masses float[Nm]
+            ## If the information is in the header, the snapshot
+            ## will not contain any array with the masses, so that is
+            ## why we need to skip the process
             if self.check_empty_masses():
                 self.sdata['mass'] = self.ProcessParticles(self.unpackMasses)
             else:
