@@ -39,28 +39,28 @@ class Snapshot:
             self.sdata['header'] = self.ProcessHeader()
 
             # Process positions float[N][3]
-            self.sdata['pos'] = self.ProcessParticlesPos()
+            self.sdata['pos'] = self.ProcessParticles(self.unpackPositions)
 
             # Process velocities float[N][3]
-            self.sdata['vel'] = self.ProcessParticlesVel()
+            self.sdata['vel'] = self.ProcessParticles(self.unpackVelocities)
 
             # Process ID int[N]
-            self.sdata['id'] = self.ProcessParticlesId()
+            self.sdata['id'] = self.ProcessParticles(self.unpackID)
 
             # Process Masses float[Nm]
             # If the information is in the header, the snapshot
             # will not contain any array with the masses, so that is
             # why we need to skip the process
             if self.check_empty_masses():
-                self.sdata['mass'] = self.ProcessParticlesMass()
+                self.sdata['mass'] = self.ProcessParticles(self.unpackMasses)
             else:
                 self.sdata['mass'] = self.m
 
             # Process Internal Energy float[Ngas]
-            self.sdata['u'] = self.ProcessParticlesEnergy()
+            self.sdata['u'] = self.ProcessParticles(self.unpackEnergy)
 
             # Process density float[Ngas]
-            self.sdata['rho'] = self.ProcessParticlesRho()
+            self.sdata['rho'] = self.ProcessParticles(self.unpackRho)
 
             # TO DO
             # Process smoothing length float[Ngas]
@@ -114,12 +114,12 @@ class Snapshot:
                 'Time': self.time,
                 'Ntot': self.Ntot}
 
-    # Positions processing
-    def ProcessParticlesPos(self):
+    def ProcessParticles(self, unpack):
         nbytes = self.getRecordLength(self.binfile.read(4)) + 4
         body = self.binfile.read(nbytes)
-        return self.unpackPositions(body)
+        return unpack(body)
 
+    # Positions processing
     def unpackPositions(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ntot*3)
         everything = unpack(fmtstring, instring)
@@ -133,11 +133,6 @@ class Snapshot:
         return self.pos
 
     # Velocities processing
-    def ProcessParticlesVel(self):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return self.unpackVelocities(body)
-
     def unpackVelocities(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ntot*3)
         everything = unpack(fmtstring, instring)
@@ -152,11 +147,6 @@ class Snapshot:
         return self.vel
 
     # Id processing
-    def ProcessParticlesId(self):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return self.unpackID(body)
-
     def unpackID(self, instring):
         fmtstring = "{0:d}i4x".format(self.Ntot)
         everything = unpack(fmtstring, instring)
@@ -171,11 +161,6 @@ class Snapshot:
         return self.ID
 
     # Mass processing
-    def ProcessParticlesMass(self):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return self.unpackMasses(body)
-
     def unpackMasses(self, instring):
         if self.missing_masses > 0:
             fmtstring = "{0:d}f4x".format(self.missing_masses)
@@ -189,11 +174,6 @@ class Snapshot:
         return self.m
 
     # Energy processing
-    def ProcessParticlesEnergy(self):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return self.unpackEnergy(body)
-
     def unpackEnergy(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ngas)
         everything = unpack(fmtstring, instring)
@@ -202,11 +182,6 @@ class Snapshot:
         return self.Energy
 
     # Rho processing
-    def ProcessParticlesRho(self):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return self.unpackRho(body)
-
     def unpackRho(self, instring):
         fmtstring = "{0:d}f4x".format(self.Ngas)
         everything = unpack(fmtstring, instring)
@@ -264,9 +239,9 @@ class Snapshot:
             print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
             return d
 
-        d['id'] = self.sdata['id'][ptype],
-        d['mass'] = self.sdata['mass'][ptype],
-        d['pos'] = self.sdata['pos'][ptype],
+        d['id'] = self.sdata['id'][ptype]
+        d['mass'] = self.sdata['mass'][ptype]
+        d['pos'] = self.sdata['pos'][ptype]
         d['vel'] = self.sdata['vel'][ptype]
 
         # Return Internal Energy and Density if the requested type is Gas.
