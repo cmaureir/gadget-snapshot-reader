@@ -1,8 +1,22 @@
 #!/usr/bin/env python
 
 from gsr import *
+import sys
 
 if __name__ == '__main__':
 
-    snap = Snapshot('/home/cmaureir/repos/gadget/out0.001/ND_M001_acc_003')
-    snap.print_data_by_type(5)  # Print information of the BlackHoles (Type 5)
+    # Processing the Snapshot
+    snap = Snapshot(sys.argv[1])
+
+    # Printing header
+    snap.print_header()
+
+    # Getting all the information of the type-5 particle
+    bhs = snap.get_data_by_type(5)
+
+    # Getting type-1 particle mass
+    gas_mass = snap.get_data_by_type(1)['mass'][0]
+
+    print(bhs['pos'])
+    print(gas_mass)
+

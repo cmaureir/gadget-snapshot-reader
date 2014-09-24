@@ -36,3 +36,6 @@ nosetests.xml
 .pydevproject
 
 ND_*
+
+# Vim files
+*.un~

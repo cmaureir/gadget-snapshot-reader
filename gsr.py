@@ -15,13 +15,23 @@ __status__ = "Production"
 import numpy as np
 
 from os.path import isfile
-from struct import unpack
+from struct import unpack, calcsize
 from sys import exit, stderr
 
 class Snapshot:
-    """Class in charge of the read-process of every snapshot"""
+    """Class in charge of reading the binary snapshot and process all the
+    information, providing also a ser of methods to access and manipulate
+    the data"""
 
-    def __init__(self, filename):
+    def __init__(self, filename,\
+                 enable_potential = False, \
+                 enable_accelerations = False, \
+                 enable_entropy_production = False, \
+                 enable_timesteps = False, \
+                 enable_density = False, \
+                 enable_smoothing_lenght = False):
+
+        # Check and open the snapshot file
         if not isfile(filename):
             stderr.write(filename, ": No such file")
             exit(1)
@@ -32,192 +42,432 @@ class Snapshot:
             except IOError:
                 stderr.write(self.fname, ": Cannot open file")
 
-            # Information of the Snapshot
-            self.sdata = {}
+        # Extra options for the snapshot format
+        self.enable_potential = enable_potential
+        self.enable_accelerations = enable_accelerations
+        self.enable_entropy_production = enable_entropy_production
+        self.enable_timesteps = enable_timesteps
+        self.enable_density = enable_density
+        self.enable_smoothing_lenght = enable_smoothing_lenght
 
-            # Process header
-            self.sdata['header'] = self.ProcessHeader()
-
-            # Process positions float[N][3]
-            self.sdata['pos'] = self.ProcessParticles(self.unpackPositions)
-
-            # Process velocities float[N][3]
-            self.sdata['vel'] = self.ProcessParticles(self.unpackVelocities)
-
-            # Process ID int[N]
-            self.sdata['id'] = self.ProcessParticles(self.unpackID)
-
-            ## Process Masses float[Nm]
-            ## If the information is in the header, the snapshot
-            ## will not contain any array with the masses, so that is
-            ## why we need to skip the process
-            if self.check_empty_masses():
-                self.sdata['mass'] = self.ProcessParticles(self.unpackMasses)
-            else:
-                self.sdata['mass'] = self.m
-
-            # Process Internal Energy float[Ngas]
-            self.sdata['u'] = self.ProcessParticles(self.unpackEnergy)
-
-            # Process density float[Ngas]
-            self.sdata['rho'] = self.ProcessParticles(self.unpackRho)
-
-            # TO DO
-            # Process smoothing length float[Ngas]
-            # Process gravitational potential float[N]
-            # Process accelerations float[N][3]
-            # Process Rate of entropy production float[Ngas]
-            # Process timesteps of particles float[N]
-
-    def __exit__(self):
-        self.binfile.close()
-
-    def check_empty_masses(self):
-        self.m = [np.zeros(i) for i in self.Npart]
+        # Reading data
+        self.raw_data = self.binfile.read()
+        self.data = {}
+        self.byte_count = 0
         self.missing_masses = 0
-        check = False
 
-        for i in range(6):
-            total = self.Npart[i]
-            mass = self.mpart[i]
+        # Starting the process
+        self.process_data()
 
-            if total > 0:
-                if mass == 0:
-                    self.missing_masses += total
-                    check = True
-                elif mass > 0:
-                    self.m[i].fill(mass)
-        return check
+    def process_data(self):
 
-    def getRecordLength(self, instring):
-        "Takes a string of some length and interprets it as a series of bits"
-        return unpack('i', instring)[0]
+        # Snapshot elements
+        #
+        # 01. Header                     [256 bytes]
+        # 02. Positions                  [real*4 pos(3,N)]
+        # 03. Velocities                 [real*4 vel(3,N)]
+        # 04. Identifications            [int*4 id(N)]
+        # 05. Masses                     [real*4 masses(Nm)]
+        # 06. Internal energy            [real*4 u(Ngas)]
+        # 07. Density                    [real*4 rho(Ngas)]
+        # 08. Smoothing lenght           [real*4 hsml(Ngas)]
+        # 09. Gravitational potential    [real*4 pot(N)]
+        # 10. Accelerations              [real*4 acc(3,N)]
+        # 11. Rate of entropy production [real*4 dAdt(Ngas)]
+        # 12. Timesteps                  [real*4 dt(N)]
 
-    # Header processing
-    def ProcessHeader(self):
-        # because at the end another field is reserved for the length again
-        self.headerlength = self.getRecordLength(self.binfile.read(4)) + 4
-        header = self.binfile.read(self.headerlength)
-        return self.unpackHeader(header)
+        # Processing header
+        self.header = self.process_header()
 
-    def unpackHeader(self, instring):
-        fmtstring = "6i8d9i{0:d}x".format(self.headerlength-124)
-        everything = unpack(fmtstring, instring)
-        # list of 6 items giving number of each particle
-        self.Npart = np.array(everything[:6])
-        self.mpart = np.array(everything[6:12])
-        self.time = everything[12]
-        self.Ntot = self.Npart.sum()
-        self.Ngas = self.Npart[0]
-        return {'Npart': self.Npart,
-                'Mpart': self.mpart,
-                'Time': self.time,
-                'Ntot': self.Ntot}
+        # Useful variables
+        self.npart  = self.header['Npart']
+        self.mpart  = self.header['Npart']
+        self.time   = self.header['Time']
+        self.ntotal = np.sum(self.header['Npart'])
+        self.ngas   = np.int(self.header['Npart'][0])
 
-    def ProcessParticles(self, unpack):
-        nbytes = self.getRecordLength(self.binfile.read(4)) + 4
-        body = self.binfile.read(nbytes)
-        return unpack(body)
 
-    # Positions processing
-    def unpackPositions(self, instring):
-        fmtstring = "{0:d}f4x".format(self.Ntot*3)
-        everything = unpack(fmtstring, instring)
-        self.pos = [np.zeros((i, 3)) for i in self.Npart]
+        # Processing the rest of the Snapshot
+        self.data['pos']  = self.process_positions()
+        self.data['vel']  = self.process_velocities()
+        self.data['id']   = self.process_identifications()
+        self.data['mass'] = self.process_masses()
+        self.data['u']    = self.process_internal_energy()
+        self.data['rho']  = self.process_density()
+        self.data['hsml'] = self.process_smoothing_lenght()
+        self.data['pot'] = self.process_potential()
+        self.data['acc'] = self.process_accelerations()
+        self.data['dadt'] = self.process_entropy_production()
+        self.data['dt'] = self.process_timesteps()
+
+        #print(len(self.data['pos']),\
+        #      len(self.data['vel']),\
+        #      len(self.data['id']),\
+        #      len(self.data['mass']),\
+        #      len(self.data['u']),\
+        #      len(self.data['rho']),\
+        #      len(self.data['hsml']),\
+        #      len(self.data['pot']),\
+        #      len(self.data['acc']),\
+        #      len(self.data['dadt']),\
+        #      len(self.data['dt']))
+
+    #@profile
+    def process_header(self):
+        self.skip_empty_bytes()
+
+        # Header format
+        nbytes = 196
+        fmtstring = "6i8d10i4d9i".format(nbytes)
+
+        # Print the amount of bytes
+        #print(calcsize(fmtstring))
+
+        # Header data section
+        chunk_data = self.raw_data[self.byte_count:self.byte_count + nbytes]
+
+        # Unpacking the raw_data
+        fdata = unpack(fmtstring, chunk_data)
+
+        # Move forward to continue reading the raw_data
+        self.byte_count += nbytes
+
+        # Creating header data structure
+        header = {'Npart': None,
+                  'Mpart': None,
+                  'Time': None,
+                  'Redshift': None,
+                  'FlagSfr': None,
+                  'FlagFeedback': None,
+                  'Nall': None,
+                  'FlagCooling': None,
+                  'NumFiles': None,
+                  'BoxSize': None,
+                  'Omega0': None,
+                  'OmegaLambda': None,
+                  'HubbleParam': None,
+                  'FlagAge': None,
+                  'FlagMetals': None,
+                  'NallHW': None,
+                  'flag_entr_ics': None}
+
+
+        # Filling header
+        header['Npart']         = np.array(fdata[0:6], dtype = np.int)
+        header['Mpart']         = np.array(fdata[6:12], dtype = np.float)
+        header['Time']          = np.float(fdata[12:13][0])
+        header['Redshift']      = np.float(fdata[13:14][0])
+        header['FlagSfr']       = np.int(fdata[14:15][0])
+        header['FlagFeedback']  = np.int(fdata[15:16][0])
+        header['Nall']          = np.array(fdata[16:22], dtype = np.int)
+        header['FlagCooling']   = np.int(fdata[22:23][0])
+        header['NumFiles']      = np.int(fdata[23:24][0])
+        header['BoxSize']       = np.float(fdata[24:25][0])
+        header['Omega0']        = np.float(fdata[25:26][0])
+        header['OmegaLambda']   = np.float(fdata[26:27][0])
+        header['HubbleParam']   = np.float(fdata[27:28][0])
+        header['FlagAge']       = np.int(fdata[28:29][0])
+        header['FlagMetals']    = np.int(fdata[29:30][0])
+        header['NallHW']        = np.array(fdata[30:36], dtype=np.int)
+        header['flag_entr_ics'] = np.int(fdata[36:37][0])
+
+        # Advancing bytes to reach the 256 bytes of the header
+        # 256 - 196 = 60
+        self.byte_count += (256 - nbytes)
+
+        self.skip_empty_bytes()
+
+        return header
+
+    #@profile
+    def unpack_data_section(self, elements, format="f"):
+
+        # String format
+        if format is "f":
+            fmtstring = "{0:d}f".format(elements)
+        elif format is "i":
+            fmtstring = "{0:d}i".format(elements)
+        else:
+            stderr.write("Invalid unpack format")
+            exit(1)
+
+        # Amount of bytes
+        #print(calcsize(fmtstring))
+
+        # Data section:
+        # The amount of elements are `float` or `int`,
+        # both data types are 4 bytes long.
+        chunk_data = self.raw_data[self.byte_count:self.byte_count + elements * 4]
+
+        # Unpacking the raw_data
+        everything = unpack(fmtstring, chunk_data)
+
+        return everything
+
+    #@profile
+    def get_chunk_of_data(self, dim, data_type, everything, ptypes=range(6)):
+
+        if dim == 1:
+            #data = [np.zeros(i, dtype=data_type) for i in self.npart]
+            data = [np.empty(i, dtype=data_type) for i in self.npart]
+        elif dim == 3:
+            #data = [np.zeros((i, 3)) for i in self.npart]
+            data = [np.empty((i, 3)) for i in self.npart]
+        else:
+            print("[Error] Incorrect dimensions reading the snapshot")
+            exit(1)
 
         offset = 0
+        for i in ptypes:
+            npart = self.npart[i]
+            if npart:
+                ini = offset * dim
+                end = ini + npart * dim
+                chunk = everything[ini:end]
+                if dim == 1:
+                    data[i] = np.array(chunk, dtype=data_type)
+                elif dim == 3:
+                    data[i] = np.reshape(chunk, (npart, 3))
+                offset += npart
+
+        return data
+
+    def skip_empty_bytes(self):
+        # Empty space between every snapshot element
+        self.byte_count += 4
+
+    def print_header(self):
+        print("{")
+        for i in self.header:
+            print("\t",i,":", self.header[i])
+        print("}")
+
+    def process_positions(self):
+        self.skip_empty_bytes()
+
+        # Amount of elements to read
+        elements = self.ntotal * 3
+        # Getting the data
+        everything = self.unpack_data_section(elements)
+        pos = self.get_chunk_of_data(3, np.float, everything)
+
+        # Move forward to continue reading the raw_data
+        self.byte_count += elements*4
+
+        self.skip_empty_bytes()
+
+        return pos
+
+    def process_velocities(self):
+        self.skip_empty_bytes()
+
+        # Amount of elements to read
+        elements = self.ntotal * 3
+        # Getting the data
+        everything = self.unpack_data_section(elements)
+        vel = self.get_chunk_of_data(3, np.float, everything)
+        # Move forward to continue reading the raw_data
+        self.byte_count += elements * 4
+
+        self.skip_empty_bytes()
+
+        return vel
+
+
+    def process_identifications(self):
+        self.skip_empty_bytes()
+
+        # Amount of particles
+        elements = self.ntotal
+        # Getting the data
+        everything = self.unpack_data_section(elements, "i")
+        id = self.get_chunk_of_data(1, np.int, everything)
+
+        self.byte_count += elements*4
+
+        self.skip_empty_bytes()
+
+        return id
+
+    def process_masses(self):
+        #mass = [np.zeros(i) for i in self.npart]
+        mass = [np.empty(i) for i in self.npart]
+        missing_types = []
+
         for i in range(6):
-            chunk = everything[offset*3:offset*3+self.Npart[i]*3]
-            self.pos[i] = np.reshape(chunk, (self.Npart[i], 3))
-            offset += self.Npart[i]
-        return self.pos
+            parts = self.npart[i]
+            m  = self.mpart[i]
 
-    # Velocities processing
-    def unpackVelocities(self, instring):
-        fmtstring = "{0:d}f4x".format(self.Ntot*3)
-        everything = unpack(fmtstring, instring)
+            if parts > 0:
+                # Check how many particles have a different mass as an array
+                # instead of using a value from the header
+                if not m:
+                    self.missing_masses += parts
+                    missing_types.append(i)
+                else:
+                    mass[i].fill(m)
 
-        self.vel = [np.zeros((i, 3)) for i in self.Npart]
-
-        offset = 0
-        for i in range(6):
-            chunk = everything[offset*3:offset*3 + self.Npart[i]*3]
-            self.vel[i] = np.reshape(chunk, (self.Npart[i], 3))
-            offset += self.Npart[i]
-        return self.vel
-
-    # Id processing
-    def unpackID(self, instring):
-        fmtstring = "{0:d}i4x".format(self.Ntot)
-        everything = unpack(fmtstring, instring)
-
-        self.ID = [np.zeros(i, dtype=np.int) for i in self.Npart]
-
-        offset = 0
-        for i in range(6):
-            chunk = everything[offset:offset+self.Npart[i]]
-            self.ID[i] = np.array(chunk, dtype=np.int)
-            offset += self.Npart[i]
-        return self.ID
-
-    # Mass processing
-    def unpackMasses(self, instring):
         if self.missing_masses > 0:
-            fmtstring = "{0:d}f4x".format(self.missing_masses)
-            everything = unpack(fmtstring, instring)
+            self.skip_empty_bytes()
+
+            elements = self.missing_masses
+            everything = self.unpack_data_section(elements)
+
             offset = 0
-            for i in range(6):
-                if self.Npart[i] > 0 and self.mpart[i] == 0:
-                    chunk = everything[offset:offset+self.Npart[i]]
-                    self.m[i] = np.array(chunk)
-                    offset += self.Npart[i]
-        return self.m
+            for i in missing_types:
+                nparts = self.npart[i]
+                chunk = everything[offset:offset+nparts]
+                mass[i] = np.array(chunk)
+                offset += nparts
+            self.byte_count += elements * 4
 
-    # Energy processing
-    def unpackEnergy(self, instring):
-        fmtstring = "{0:d}f4x".format(self.Ngas)
-        everything = unpack(fmtstring, instring)
+            self.skip_empty_bytes()
 
-        self.Energy = np.array(everything)
-        return self.Energy
+        return mass
 
-    # Rho processing
-    def unpackRho(self, instring):
-        fmtstring = "{0:d}f4x".format(self.Ngas)
-        everything = unpack(fmtstring, instring)
+    def process_internal_energy(self):
+        self.skip_empty_bytes()
 
-        chunk = everything[0:self.Ngas]
-        self.Rho = np.array(chunk)
-        return self.Rho
+        elements = np.int(self.ngas)
+        everything = self.unpack_data_section(elements)
+        u = np.array(everything)
+        self.byte_count += elements * 4
+
+        self.skip_empty_bytes()
+
+        return u
+
+    def process_density(self):
+
+        #rho = np.zeros(self.ngas)
+        rho = np.empty(self.ngas)
+        if self.enable_density:
+            self.skip_empty_bytes()
+
+            # Just Gas particles
+            elements = np.int(self.ngas)
+            everything = self.unpack_data_section(elements)
+            rho = np.array(everything)
+            self.byte_count += elements * 4
+
+            self.skip_empty_bytes()
+
+        return rho
+
+    def process_smoothing_lenght(self):
+
+        #hsml = np.zeros(self.ngas)
+        hsml = np.empty(self.ngas)
+
+        if self.enable_smoothing_lenght:
+            self.skip_empty_bytes()
+
+            elements = np.int(self.ngas)
+            everything = self.unpack_data_section(elements)
+            hsml = np.array(everything)
+            self.byte_count += elements * 4
+
+            self.skip_empty_bytes()
+
+        return hsml
 
 
-    # Utils
-    def computeCOM(self, parts=range(6)):
-        '''
-        Computes center of mass for all the particle types
-        given in the list parts,
-        default all
-        '''
-        com = np.zeros(3)
-        totM = 0.0
-        for i in parts:
-            for j in range(self.Npart[i]):
-                com += self.pos[i][j, :]*self.m[i][j]
-                totM += self.m[i][j]
-        com = com/totM
-        self.com = com
+    def process_potential(self):
+
+        #pot = [np.zeros(i, dtype=np.float) for i in self.npart]
+        pot = [np.empty(i, dtype=np.float) for i in self.npart]
+
+        if self.enable_potential:
+            self.skip_empty_bytes()
+
+            elements = np.sum(self.npart)
+            everything = self.unpack_data_section(elements)
+            pot = self.get_chunk_of_data(1, np.float, everything)
+
+            self.skip_empty_bytes()
+
+        return pot
+
+
+    def process_accelerations(self):
+        #acc = [np.zeros((i, 3)) for i in self.npart]
+        acc = [np.empty((i, 3)) for i in self.npart]
+        if self.enable_accelerations:
+            self.skip_empty_bytes()
+
+            # Amount of elements to read
+            elements = np.ntotal * 3
+            everything = self.unpack_data_section(elements)
+            acc = self.get_chunk_of_data(3, np.float, everything)
+            # Move forward to continue reading the raw_data
+            self.byte_count += elements*4
+            self.skip_empty_bytes()
+
+        return acc
+
+    def process_entropy_production(self):
+
+        #dadt = np.zeros(self.ngas)
+        dadt = np.empty(self.ngas)
+
+        if self.enable_entropy_production:
+            self.skip_empty_bytes()
+
+            elements = self.ngas
+            everything = self.unpack_data_section(elements)
+            dadt = np.array(everything)
+            self.byte_count += elements * 4
+
+            self.skip_empty_bytes()
+
+        return dadt
+
+    def process_timesteps(self):
+
+        #dt = [np.zeros(i, dtype=np.float) for i in self.npart]
+        dt = [np.empty(i, dtype=np.float) for i in self.npart]
+        if self.enable_timesteps:
+            self.skip_empty_bytes()
+
+            elements = self.ntotal
+            everything = self.unpack_data_section(elements)
+            dt = self.get_chunk_of_data(1, np.float, everything)
+
+            self.skip_empty_bytes()
+
+        return dt
+
+    # Utilities
+
+    def get_data_by_type(self, ptype):
+        d = {}
+        if ptype < 0 or ptype > 5:
+            print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
+            return d
+
+        d['id']   = self.data['id'][ptype]
+        d['mass'] = self.data['mass'][ptype]
+        d['pos']  = self.data['pos'][ptype]
+        d['vel']  = self.data['vel'][ptype]
+
+        # Return Internal Energy and Density if the requested type is Gas.
+        if not ptype:
+            d['u']   = self.data['u']
+            d['rho'] = self.data['rho']
+
+        return d
 
     def to_ascii(self):
         def get_tuple(key):
             if len(key) > 1:
-                return tuple(i for i in self.sdata[key])
+                return tuple(i for i in self.data[key])
 
         id = np.concatenate(get_tuple('id'), axis = 0)
         mass = np.concatenate(get_tuple('mass'), axis = 0)
         pos = np.concatenate(get_tuple('pos'), axis = 0)
         vel = np.concatenate(get_tuple('vel'), axis = 0)
-        u = self.sdata['u']
-        rho = self.sdata['rho']
+        u = self.data['u']
+        rho = self.data['rho']
         u.resize(self.Ntot, refcheck=False)
         rho.resize(self.Ntot, refcheck=False)
 
@@ -230,40 +480,19 @@ class Snapshot:
                    np.hstack([zip(id, mass), pos, vel, zip(u, rho)]),
                    fmt=fmtstring)
 
-    def get_header(self):
-        return self.sdata['header']
-
-    def get_data_by_type(self, ptype):
-        d = {}
-        if ptype < 0 or ptype > 5:
-            print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
-            return d
-
-        d['id'] = self.sdata['id'][ptype]
-        d['mass'] = self.sdata['mass'][ptype]
-        d['pos'] = self.sdata['pos'][ptype]
-        d['vel'] = self.sdata['vel'][ptype]
-
-        # Return Internal Energy and Density if the requested type is Gas.
-        if ptype == 0:
-            d['u'] = self.sdata['u']
-            d['rho'] = self.sdata['rho']
-
-        return d
-
     def print_data_by_type(self, ptype):
         if ptype < 0 or ptype > 5:
             print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
             return None
-        for i in range(self.Npart[ptype]):
-            pid = self.sdata['id'][ptype][i]
-            mass = self.sdata['mass'][ptype][i]
-            posx, posy, posz = self.sdata['pos'][ptype][i]
-            velx, vely, velz = self.sdata['vel'][ptype][i]
+        for i in range(self.npart[ptype]):
+            pid = self.data['id'][ptype][i]
+            mass = self.data['mass'][ptype][i]
+            posx, posy, posz = self.data['pos'][ptype][i]
+            velx, vely, velz = self.data['vel'][ptype][i]
 
             if ptype == 0:
-                u = self.sdata['u'][i]
-                rho = self.sdata['rho'][i]
+                u = self.data['u'][i]
+                rho = self.data['rho'][i]
                 fmtstring = '%8d %1.5e '
                 fmtstring += '% 1.5e % 1.5e % 1.5e '
                 fmtstring += '% 1.5e % 1.5e % 1.5e '
@@ -274,38 +503,3 @@ class Snapshot:
             else:
                 fmtstring = '%8d %1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e'
                 print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz))
-
-## Print utils
-#
-#def print_header(snap):
-#    for key, val in snap.sdata['header'].iteritems():
-#        print(key, val)
-#
-#
-#def print_pos(snap):
-#    ptype = 0
-#    for p in snap.sdata['pos']:
-#        print("Type", ptype, p)
-#        ptype += 1
-#
-#
-#def print_vel(snap):
-#    vtype = 0
-#    for v in snap.sdata['vel']:
-#        print("Type", vtype, v)
-#        vtype += 1
-#
-#
-#def print_id(snap):
-#    itype = 0
-#    for i in snap.sdata['id']:
-#        print("Type", itype, i)
-#        itype += 1
-#
-#
-#def print_mass(snap):
-#    mtype = 0
-#    for m in snap.sdata['mass']:
-#        print("Type", mtype, m)
-#        mtype += 1
-
