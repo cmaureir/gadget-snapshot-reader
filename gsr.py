@@ -81,7 +81,7 @@ class Snapshot:
 
         # Useful variables
         self.npart  = self.header['Npart']
-        self.mpart  = self.header['Npart']
+        self.mpart  = self.header['Mpart']
         self.time   = self.header['Time']
         self.ntotal = np.sum(self.header['Npart'])
         self.ngas   = np.int(self.header['Npart'][0])
