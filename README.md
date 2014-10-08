@@ -1,12 +1,16 @@
 gadget-snapshot-reader (GSR)
 ============================
 
-[GADGET](http://www.mpa-garching.mpg.de/gadget/) is a cosmological SPH and N-body code, written by [Volker Springel](http://www.mpa-garching.mpg.de/~volker/).
+[GADGET](http://www.mpa-garching.mpg.de/gadget/) is a cosmological SPH and
+N-body code, written by [Volker Springel](http://www.mpa-garching.mpg.de/~volker/).
 
-Since this code is widely used by the cosmological community, and considering the growth of Python use among scientist,
-[Patrick Brem](https://github.com/skele/gadget-snapshot-reader) decided to write a simple script to read the snapshot and be able to access the data.
+Since this code is widely used by the cosmological community,
+and considering the growth of Python use among scientist,
+[Patrick Brem](https://github.com/skele/gadget-snapshot-reader) decided to write a
+simple script to read the snapshot and be able to access the data.
 
-I decided to improve his code, and add more features, to provide a nice/simple module to deal with the GADGET binary snapshots.
+I decided to improve his code, and add more features, to provide a nice/simple
+module to deal with the GADGET binary snapshots.
 
 Be aware, the project is still **under development**.
 
@@ -42,6 +46,21 @@ snap.to_ascii()
 Every ascii file is generated using the following order:
 
 | id | mass | posx | posy | posz | velx | vely | velz | u | rho |
+
+
+> It is possible to process more parameters, just enabling them in the
+> constructor call, for example:
+>  
+> > * snap = Snapshot(filename, enable_potential = True)
+> 
+> Extra options are:
+>
+> > *  enable_potential
+> > *  enable_accelerations
+> > *  enable_entropy_production
+> > *  enable_timesteps
+> > *  enable_density
+> > *  enable_smoothing_lenght
 
 If you want to print certain information from the snapshot
 by type:
