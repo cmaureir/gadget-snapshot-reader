@@ -209,10 +209,10 @@ class Snapshot:
 
         if dim == 1:
             #data = [np.zeros(i, dtype=data_type) for i in self.npart]
-            data = [np.empty(i, dtype=data_type) for i in self.npart]
+            data = [np.zeros(i, dtype=data_type) for i in self.npart]
         elif dim == 3:
             #data = [np.zeros((i, 3)) for i in self.npart]
-            data = [np.empty((i, 3)) for i in self.npart]
+            data = [np.zeros((i, 3)) for i in self.npart]
         else:
             print("[Error] Incorrect dimensions reading the snapshot")
             exit(1)
@@ -291,7 +291,7 @@ class Snapshot:
 
     def process_masses(self):
         #mass = [np.zeros(i) for i in self.npart]
-        mass = [np.empty(i) for i in self.npart]
+        mass = [np.zeros(i) for i in self.npart]
         missing_types = []
 
         for i in range(6):
@@ -340,7 +340,7 @@ class Snapshot:
     def process_density(self):
 
         #rho = np.zeros(self.ngas)
-        rho = np.empty(self.ngas)
+        rho = np.zeros(self.ngas)
         if self.enable_density:
             self.skip_empty_bytes()
 
@@ -357,7 +357,7 @@ class Snapshot:
     def process_smoothing_lenght(self):
 
         #hsml = np.zeros(self.ngas)
-        hsml = np.empty(self.ngas)
+        hsml = np.zeros(self.ngas)
 
         if self.enable_smoothing_lenght:
             self.skip_empty_bytes()
@@ -375,7 +375,7 @@ class Snapshot:
     def process_potential(self):
 
         #pot = [np.zeros(i, dtype=np.float) for i in self.npart]
-        pot = [np.empty(i, dtype=np.float) for i in self.npart]
+        pot = [np.zeros(i, dtype=np.float) for i in self.npart]
 
         if self.enable_potential:
             self.skip_empty_bytes()
@@ -391,7 +391,7 @@ class Snapshot:
 
     def process_accelerations(self):
         #acc = [np.zeros((i, 3)) for i in self.npart]
-        acc = [np.empty((i, 3)) for i in self.npart]
+        acc = [np.zeros((i, 3)) for i in self.npart]
         if self.enable_accelerations:
             self.skip_empty_bytes()
 
@@ -408,7 +408,7 @@ class Snapshot:
     def process_entropy_production(self):
 
         #dadt = np.zeros(self.ngas)
-        dadt = np.empty(self.ngas)
+        dadt = np.zeros(self.ngas)
 
         if self.enable_entropy_production:
             self.skip_empty_bytes()
@@ -425,7 +425,7 @@ class Snapshot:
     def process_timesteps(self):
 
         #dt = [np.zeros(i, dtype=np.float) for i in self.npart]
-        dt = [np.empty(i, dtype=np.float) for i in self.npart]
+        dt = [np.zeros(i, dtype=np.float) for i in self.npart]
         if self.enable_timesteps:
             self.skip_empty_bytes()
 
@@ -468,17 +468,18 @@ class Snapshot:
         vel = np.concatenate(get_tuple('vel'), axis = 0)
         u = self.data['u']
         rho = self.data['rho']
-        u.resize(self.Ntot, refcheck=False)
-        rho.resize(self.Ntot, refcheck=False)
+        u.resize(self.ntotal, refcheck=False)
+        rho.resize(self.ntotal, refcheck=False)
 
         fmtstring = ['%8d', '%1.5e',
                      '% 1.5e', '% 1.5e', '% 1.5e',
                      '% 1.5e', '% 1.5e', '% 1.5e',
                      '% 1.5e', '% 1.5e']
 
-        np.savetxt(self.fname+'.asc',
-                   np.hstack([zip(id, mass), pos, vel, zip(u, rho)]),
-                   fmt=fmtstring)
+        print(len(id) == len(mass) == len(pos) == len(vel) == len(u) == len(rho))
+        data_to_print = np.c_[id, mass, pos, vel, u, rho]
+
+        np.savetxt(self.fname+'.asc', data_to_print, fmt=fmtstring)
 
     def print_data_by_type(self, ptype):
         if ptype < 0 or ptype > 5:
