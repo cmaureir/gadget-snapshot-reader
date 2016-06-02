@@ -17,11 +17,10 @@ Be aware, the project is still **under development**.
 Installation
 --------------
 
-To use this module, it's necessary to source the `update_pythonpath.sh`,
-which will add to the `PYTHONPATH` the path of the code.
+To use this module, you can install is using the `setup.py`.
 
 ```bash
-    source update_pythonpath.sh
+    python setup.py --user
 ```
 
 Examples
@@ -50,9 +49,9 @@ Every ascii file is generated using the following order:
 
 > It is possible to process more parameters, just enabling them in the
 > constructor call, for example:
->  
+>
 > > * snap = Snapshot(filename, enable_potential = True)
-> 
+>
 > Extra options are:
 >
 > > *  enable_potential
