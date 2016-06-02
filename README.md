@@ -20,7 +20,7 @@ Installation
 To use this module, you can install is using the `setup.py`.
 
 ```bash
-    python setup.py --user
+    python setup.py install --user
 ```
 
 Examples
