@@ -424,18 +424,19 @@ class Snapshot:
 
     def process_timesteps(self):
 
-        #dt = [np.zeros(i, dtype=np.float) for i in self.npart]
-        dt = [np.zeros(i, dtype=np.float) for i in self.npart]
         if self.enable_timesteps:
             self.skip_empty_bytes()
 
+            # Amount of elements to read
             elements = self.ntotal
+            # Getting the data
             everything = self.unpack_data_section(elements)
             dt = self.get_chunk_of_data(1, np.float, everything)
 
-            self.skip_empty_bytes()
+            # Move forward to continue reading the raw_data
+            self.byte_count += elements*4
 
-        return dt
+            self.skip_empty_bytes()
 
     # Utilities
 
@@ -454,6 +455,8 @@ class Snapshot:
         if not ptype:
             d['u']   = self.data['u']
             d['rho'] = self.data['rho']
+
+        d['dt'] = self.data['dt']
 
         return d
 
