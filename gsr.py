@@ -27,9 +27,7 @@ class Snapshot:
                  enable_potential = False, \
                  enable_accelerations = False, \
                  enable_entropy_production = False, \
-                 enable_timesteps = False, \
-                 enable_density = False, \
-                 enable_smoothing_lenght = False):
+                 enable_timesteps = False):
 
         # Check and open the snapshot file
         if not isfile(filename):
@@ -47,8 +45,6 @@ class Snapshot:
         self.enable_accelerations = enable_accelerations
         self.enable_entropy_production = enable_entropy_production
         self.enable_timesteps = enable_timesteps
-        self.enable_density = enable_density
-        self.enable_smoothing_lenght = enable_smoothing_lenght
 
         # Reading data
         self.raw_data = self.binfile.read()
@@ -71,10 +67,12 @@ class Snapshot:
         # 06. Internal energy            [real*4 u(Ngas)]
         # 07. Density                    [real*4 rho(Ngas)]
         # 08. Smoothing lenght           [real*4 hsml(Ngas)]
-        # 09. Gravitational potential    [real*4 pot(N)]
-        # 10. Accelerations              [real*4 acc(3,N)]
-        # 11. Rate of entropy production [real*4 dAdt(Ngas)]
-        # 12. Timesteps                  [real*4 dt(N)]
+        # 09. Gravitational potential    [real*4 pot(N)]        (*)
+        # 10. Accelerations              [real*4 acc(3,N)]      (*)
+        # 11. Rate of entropy production [real*4 dAdt(Ngas)]    (*)
+        # 12. Timesteps                  [real*4 dt(N)]         (*)
+        #
+        # (*) Optional: Must be activated on compilation of Gadget
 
         # Processing header
         self.header = self.process_header()
@@ -95,22 +93,15 @@ class Snapshot:
         self.data['u']    = self.process_internal_energy()
         self.data['rho']  = self.process_density()
         self.data['hsml'] = self.process_smoothing_lenght()
-        self.data['pot'] = self.process_potential()
-        self.data['acc'] = self.process_accelerations()
-        self.data['dadt'] = self.process_entropy_production()
-        self.data['dt'] = self.process_timesteps()
 
-        #print(len(self.data['pos']),\
-        #      len(self.data['vel']),\
-        #      len(self.data['id']),\
-        #      len(self.data['mass']),\
-        #      len(self.data['u']),\
-        #      len(self.data['rho']),\
-        #      len(self.data['hsml']),\
-        #      len(self.data['pot']),\
-        #      len(self.data['acc']),\
-        #      len(self.data['dadt']),\
-        #      len(self.data['dt']))
+        if self.enable_potential:
+            self.data['pot'] = self.process_potential()
+        if self.enable_accelerations:
+            self.data['acc'] = self.process_accelerations()
+        if self.enable_entropy_production:
+            self.data['dadt'] = self.process_entropy_production()
+        if self.enable_timesteps:
+            self.data['dt'] = self.process_timesteps()
 
     #@profile
     def process_header(self):
@@ -339,52 +330,46 @@ class Snapshot:
 
     def process_density(self):
 
-        #rho = np.zeros(self.ngas)
         rho = np.zeros(self.ngas)
-        if self.enable_density:
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
-            # Just Gas particles
-            elements = np.int(self.ngas)
-            everything = self.unpack_data_section(elements)
-            rho = np.array(everything)
-            self.byte_count += elements * 4
+        # Just Gas particles
+        elements = np.int(self.ngas)
+        everything = self.unpack_data_section(elements)
+        rho = np.array(everything)
+        self.byte_count += elements * 4
 
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
         return rho
 
     def process_smoothing_lenght(self):
 
-        #hsml = np.zeros(self.ngas)
         hsml = np.zeros(self.ngas)
 
-        if self.enable_smoothing_lenght:
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
-            elements = np.int(self.ngas)
-            everything = self.unpack_data_section(elements)
-            hsml = np.array(everything)
-            self.byte_count += elements * 4
+        elements = np.int(self.ngas)
+        everything = self.unpack_data_section(elements)
+        hsml = np.array(everything)
+        self.byte_count += elements * 4
 
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
         return hsml
 
 
     def process_potential(self):
 
-        #pot = [np.zeros(i, dtype=np.float) for i in self.npart]
         pot = [np.zeros(i, dtype=np.float) for i in self.npart]
 
-        if self.enable_potential:
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
-            elements = np.sum(self.npart)
-            everything = self.unpack_data_section(elements)
-            pot = self.get_chunk_of_data(1, np.float, everything)
+        elements = np.sum(self.npart)
+        everything = self.unpack_data_section(elements)
+        pot = self.get_chunk_of_data(1, np.float, everything)
 
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
         return pot
 
@@ -392,16 +377,16 @@ class Snapshot:
     def process_accelerations(self):
         #acc = [np.zeros((i, 3)) for i in self.npart]
         acc = [np.zeros((i, 3)) for i in self.npart]
-        if self.enable_accelerations:
-            self.skip_empty_bytes()
 
-            # Amount of elements to read
-            elements = np.ntotal * 3
-            everything = self.unpack_data_section(elements)
-            acc = self.get_chunk_of_data(3, np.float, everything)
-            # Move forward to continue reading the raw_data
-            self.byte_count += elements*4
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
+
+        # Amount of elements to read
+        elements = np.ntotal * 3
+        everything = self.unpack_data_section(elements)
+        acc = self.get_chunk_of_data(3, np.float, everything)
+        # Move forward to continue reading the raw_data
+        self.byte_count += elements*4
+        self.skip_empty_bytes()
 
         return acc
 
@@ -410,33 +395,35 @@ class Snapshot:
         #dadt = np.zeros(self.ngas)
         dadt = np.zeros(self.ngas)
 
-        if self.enable_entropy_production:
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
-            elements = self.ngas
-            everything = self.unpack_data_section(elements)
-            dadt = np.array(everything)
-            self.byte_count += elements * 4
+        elements = self.ngas
+        everything = self.unpack_data_section(elements)
+        dadt = np.array(everything)
+        self.byte_count += elements * 4
 
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
 
         return dadt
 
     def process_timesteps(self):
 
-        if self.enable_timesteps:
-            self.skip_empty_bytes()
+        dt= [np.zeros(i, dtype=np.float) for i in self.npart]
+        self.skip_empty_bytes()
 
-            # Amount of elements to read
-            elements = self.ntotal
-            # Getting the data
-            everything = self.unpack_data_section(elements)
-            dt = self.get_chunk_of_data(1, np.float, everything)
+        # Amount of elements to read
+        assert(np.sum(self.npart) == self.ntotal)
+        elements = self.ntotal
+        # Getting the data
+        everything = self.unpack_data_section(elements)
+        dt = self.get_chunk_of_data(1, np.float, everything)
 
-            # Move forward to continue reading the raw_data
-            self.byte_count += elements*4
+        # Move forward to continue reading the raw_data
+        self.byte_count += elements*4
 
-            self.skip_empty_bytes()
+        self.skip_empty_bytes()
+
+        return dt
 
     # Utilities
 
@@ -446,17 +433,17 @@ class Snapshot:
             print(pytpe, "Invalid data type, use only 0, 1, 2, 3, 4 or 5")
             return d
 
-        d['id']   = self.data['id'][ptype]
-        d['mass'] = self.data['mass'][ptype]
         d['pos']  = self.data['pos'][ptype]
         d['vel']  = self.data['vel'][ptype]
+        d['id']   = self.data['id'][ptype]
+        d['mass'] = self.data['mass'][ptype]
 
-        # Return Internal Energy and Density if the requested type is Gas.
         if not ptype:
             d['u']   = self.data['u']
             d['rho'] = self.data['rho']
+            d['hsml'] = self.data['hsml']
 
-        d['dt'] = self.data['dt']
+        d['dt'] = self.data['dt'][ptype]
 
         return d
 
@@ -465,24 +452,29 @@ class Snapshot:
             if len(key) > 1:
                 return tuple(i for i in self.data[key])
 
-        id = np.concatenate(get_tuple('id'), axis = 0)
+        ids  = np.concatenate(get_tuple('id'),   axis = 0)
         mass = np.concatenate(get_tuple('mass'), axis = 0)
-        pos = np.concatenate(get_tuple('pos'), axis = 0)
-        vel = np.concatenate(get_tuple('vel'), axis = 0)
-        u = self.data['u']
-        rho = self.data['rho']
+        pos  = np.concatenate(get_tuple('pos'),  axis = 0)
+        vel  = np.concatenate(get_tuple('vel'),  axis = 0)
+
+        u    = self.data['u']
+        rho  = self.data['rho']
+        hsml = self.data['hsml']
+
         u.resize(self.ntotal, refcheck=False)
         rho.resize(self.ntotal, refcheck=False)
+        hsml.resize(self.ntotal, refcheck=False)
 
-        fmtstring = ['%8d', '%1.5e',
-                     '% 1.5e', '% 1.5e', '% 1.5e',
-                     '% 1.5e', '% 1.5e', '% 1.5e',
-                     '% 1.5e', '% 1.5e']
+        fmtstring = ['%8d', '% .5e',
+                     '% .5e', '% .5e', '% .5e',
+                     '% .5e', '% .5e', '% .5e',
+                     '% .5e', '% .5e', '% .5e']
 
-        print(len(id) == len(mass) == len(pos) == len(vel) == len(u) == len(rho))
-        data_to_print = np.c_[id, mass, pos, vel, u, rho]
+        assert(len(id) == len(mass) == len(pos) == len(vel))
+        assert(len(id) == len(u) == len(rho) == len(hsml))
 
-        np.savetxt(self.fname+'.asc', data_to_print, fmt=fmtstring)
+        data_to_print = np.c_[id, mass, pos, vel, u, rho, hsml]
+        np.savetxt(self.fname+'.asc', data_to_print, fmt = fmtstring)
 
     def print_data_by_type(self, ptype):
         if ptype < 0 or ptype > 5:
@@ -490,20 +482,21 @@ class Snapshot:
             return None
         for i in range(self.npart[ptype]):
             pid = self.data['id'][ptype][i]
-            mass = self.data['mass'][ptype][i]
-            posx, posy, posz = self.data['pos'][ptype][i]
-            velx, vely, velz = self.data['vel'][ptype][i]
+            m = self.data['mass'][ptype][i]
+            rx, ry, rz = self.data['pos'][ptype][i]
+            vx, vy, vz = self.data['vel'][ptype][i]
 
             if ptype == 0:
                 u = self.data['u'][i]
                 rho = self.data['rho'][i]
-                fmtstring = '%8d %1.5e '
-                fmtstring += '% 1.5e % 1.5e % 1.5e '
-                fmtstring += '% 1.5e % 1.5e % 1.5e '
-                fmtstring += '% 1.5e % 1.5e'
-                print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz,\
-                                   u, rho))
-
+                hsml = self.data['hsml'][i]
             else:
-                fmtstring = '%8d %1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e % 1.5e'
-                print(fmtstring % (pid, mass, posx, posy, posz, velx, vely, velz))
+                u = 0.0
+                rho = 0.0
+                hsml = 0.0
+
+            fmts = '%8d %1.5e '
+            fmts += '% .5e % .5e % .5e '
+            fmts += '% .5e % .5e % .5e '
+            fmts += '% .5e % .5e % .5e'
+            print(fmts % (pid, m, rx, ry, rz, vx, vy, vz, u, rho, hsml))
