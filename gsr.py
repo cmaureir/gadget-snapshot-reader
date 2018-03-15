@@ -19,14 +19,17 @@ from struct import unpack, calcsize
 from sys import exit, stderr
 
 class Snapshot:
-    """Class in charge of reading the binary snapshot and process all the
-    information, providing also a ser of methods to access and manipulate
-    the data"""
 
-    def __init__(self, filename,\
-                 enable_potential = False, \
-                 enable_accelerations = False, \
-                 enable_entropy_production = False, \
+    """
+    Class in charge of reading the binary snapshot and process all the
+    information, providing also a ser of methods to access and manipulate
+    the data
+    """
+
+    def __init__(self, filename,
+                 enable_potential = False,
+                 enable_accelerations = False,
+                 enable_entropy_production = False,
                  enable_timesteps = False):
 
         # Check and open the snapshot file
@@ -188,7 +191,9 @@ class Snapshot:
         # Data section:
         # The amount of elements are `float` or `int`,
         # both data types are 4 bytes long.
-        chunk_data = self.raw_data[self.byte_count:self.byte_count + elements * 4]
+        ini = self.byte_count
+        end = ini + elements * 4
+        chunk_data = self.raw_data[ini:end]
 
         # Unpacking the raw_data
         everything = unpack(fmtstring, chunk_data)
