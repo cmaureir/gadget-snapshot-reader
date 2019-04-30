@@ -448,7 +448,8 @@ class Snapshot:
             d['rho'] = self.data['rho']
             d['hsml'] = self.data['hsml']
 
-        d['dt'] = self.data['dt'][ptype]
+        if self.enable_timesteps:
+            d['dt'] = self.data['dt'][ptype]
 
         return d
 
@@ -475,10 +476,10 @@ class Snapshot:
                      '% .5e', '% .5e', '% .5e',
                      '% .5e', '% .5e', '% .5e']
 
-        assert(len(id) == len(mass) == len(pos) == len(vel))
-        assert(len(id) == len(u) == len(rho) == len(hsml))
+        assert(len(ids) == len(mass) == len(pos) == len(vel))
+        assert(len(ids) == len(u) == len(rho) == len(hsml))
 
-        data_to_print = np.c_[id, mass, pos, vel, u, rho, hsml]
+        data_to_print = np.c_[ids, mass, pos, vel, u, rho, hsml]
         np.savetxt(self.fname+'.asc', data_to_print, fmt = fmtstring)
 
     def print_data_by_type(self, ptype):
